@@ -1,0 +1,6 @@
+[Unit]
+Description=Prometheus Node Exporter Image
+Documentation=man:podman-systemd.unit(5)
+
+[Image]
+Image=docker.io/prom/node-exporter:latest

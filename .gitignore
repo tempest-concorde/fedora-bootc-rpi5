@@ -1,0 +1,52 @@
+# Build outputs
+output/
+*.raw
+*.iso
+*.qcow2
+*.img
+
+# Configuration files with secrets
+config.toml
+docker-auth.json
+ssh_key.pub
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Go build artifacts
+go.sum
+go.mod
+
+# Node modules (for commitlint)
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Container runtime
+.container-*

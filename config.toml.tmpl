@@ -1,0 +1,106 @@
+[customizations.installer.kickstart]
+contents = """
+text
+lang en_US.UTF-8
+keyboard us
+timezone UTC
+network --bootproto=dhcp --device=link --activate --onboot=on --hostname=rpi5-bootc
+
+# Disk wiping and partitioning for Raspberry Pi 5
+zerombr
+clearpart --all --initlabel
+
+# Use automatic partitioning suitable for ARM64/RPi5
+autopart --type=plain
+
+# Lock root password and configure SSH key access
+rootpw --lock
+sshkey --username=root "{{ strings.TrimSpace (file.Read (env.Getenv "SSH_KEY_PATH")) }}"
+
+%post
+# Setup ostree authentication (runtime-specific configuration)
+mkdir -p /etc/ostree
+cat > /etc/ostree/auth.json << 'EOF'
+{{ file.Read (env.Getenv "DOCKER_AUTH_PATH") }}
+EOF
+
+# Configure WiFi networks
+export WIFI_SSID_1="{{ env.Getenv "WIFI_SSID_1" }}"
+export WIFI_PSK_1="{{ env.Getenv "WIFI_PSK_1" }}"
+export WIFI_SSID_2="{{ env.Getenv "WIFI_SSID_2" }}"
+export WIFI_PSK_2="{{ env.Getenv "WIFI_PSK_2" }}"
+
+# Run WiFi setup if credentials provided
+if [ -n "$WIFI_SSID_1" ] && [ -n "$WIFI_PSK_1" ]; then
+    echo "Configuring WiFi networks..."
+    /usr/local/bin/wifi-setup.sh
+fi
+
+# Setup Tailscale authentication and start service
+export TAILSCALE_AUTH_KEY="{{ env.Getenv "TAILSCALE_AUTH_KEY" }}"
+export TAILSCALE_ENABLE_ROUTING="{{ env.Getenv "TAILSCALE_ENABLE_ROUTING" }}"
+
+if [ -n "$TAILSCALE_AUTH_KEY" ]; then
+    echo "Setting up Tailscale..."
+    systemctl start tailscaled
+    /usr/local/bin/tailscale-setup.sh
+fi
+
+# Enable and start essential services
+systemctl enable sshd
+systemctl enable NetworkManager
+systemctl enable chronyd
+
+# Configure SSH for security
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/99-rpi5-security.conf << 'EOF'
+# Security configuration for Raspberry Pi 5
+PermitRootLogin yes
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+MaxAuthTries 3
+ClientAliveInterval 300
+ClientAliveCountMax 2
+EOF
+
+# Create a simple system info script
+cat > /usr/local/bin/system-info.sh << 'EOF'
+#!/bin/bash
+echo "=== Raspberry Pi 5 System Information ==="
+echo "Hostname: $(hostname)"
+echo "Architecture: $(uname -m)"
+echo "Kernel: $(uname -r)"
+echo "Uptime: $(uptime -p)"
+echo ""
+echo "=== Network Information ==="
+ip addr show | grep -E '^[0-9]+: |inet ' | grep -v 'inet 127.0.0.1'
+echo ""
+echo "=== Tailscale Status ==="
+tailscale status 2>/dev/null || echo "Tailscale not configured"
+echo ""
+echo "=== WiFi Networks ==="
+nmcli -t -f NAME,TYPE connection show | grep wifi || echo "No WiFi connections configured"
+EOF
+chmod +x /usr/local/bin/system-info.sh
+
+# Add system info to motd
+cat > /etc/motd << 'EOF'
+
+ ____            _                            ____  _ ____  
+|  _ \ __ _ ___ | |__   ___ _ __ _ __ _   _   |  _ \(_) ___| 
+| |_) / _` / __|| '_ \ / _ \ '__| '__| | | |  | |_) | |___ \ 
+|  _ < (_| \__ \| |_) |  __/ |  | |  | |_| |  |  _ <| |___) |
+|_| \_\__,_|___/|_.__/ \___|_|  |_|   \__, |  |_| \_\_|____/ 
+                                     |___/                  
+
+Fedora bootc system for Raspberry Pi 5
+Run 'system-info.sh' for detailed system information
+
+EOF
+
+%end
+
+reboot --eject
+
+"""

@@ -1,0 +1,8 @@
+[Unit]
+Description=Monitoring network for Prometheus and Grafana
+Documentation=man:podman-systemd.unit(5)
+
+[Network]
+Subnet=10.89.0.0/24
+Gateway=10.89.0.1
+NetworkName=monitoring
