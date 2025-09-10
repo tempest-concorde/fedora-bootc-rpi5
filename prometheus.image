@@ -1,6 +1,0 @@
-[Unit]
-Description=Prometheus Server Image
-Documentation=man:podman-systemd.unit(5)
-
-[Image]
-Image=docker.io/prom/prometheus:latest

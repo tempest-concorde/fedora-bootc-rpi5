@@ -14,7 +14,7 @@ env:
 
 jobs:
   build-container:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm64
     permissions:
       contents: read
       packages: write
@@ -22,11 +22,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm64
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -61,102 +56,11 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  build-images:
-    needs: build-container
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    
-    strategy:
-      matrix:
-        image-type: [iso, raw]
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y podman golang-go
-        go install github.com/hairyhenderson/gomplate/v3/cmd/gomplate@latest
-
-    - name: Create SSH key file
-      run: |
-        echo "${{ secrets.SSH_PUBLIC_KEY }}" > ssh_key.pub
-        chmod 600 ssh_key.pub
-
-    - name: Create Docker auth file
-      run: |
-        echo "${{ secrets.DOCKER_AUTH_JSON }}" > docker-auth.json
-
-    - name: Set environment variables
-      run: |
-        echo "SSH_KEY_PATH=$(pwd)/ssh_key.pub" >> $GITHUB_ENV
-        echo "DOCKER_AUTH_PATH=$(pwd)/docker-auth.json" >> $GITHUB_ENV
-        echo "TAILSCALE_AUTH_KEY=${{ secrets.TAILSCALE_AUTH_KEY }}" >> $GITHUB_ENV
-        echo "WIFI_SSID_1=${{ secrets.WIFI_SSID_1 }}" >> $GITHUB_ENV
-        echo "WIFI_PSK_1=${{ secrets.WIFI_PSK_1 }}" >> $GITHUB_ENV
-        echo "WIFI_SSID_2=${{ secrets.WIFI_SSID_2 }}" >> $GITHUB_ENV
-        echo "WIFI_PSK_2=${{ secrets.WIFI_PSK_2 }}" >> $GITHUB_ENV
-        echo "TAILSCALE_ENABLE_ROUTING=${{ secrets.TAILSCALE_ENABLE_ROUTING || 'false' }}" >> $GITHUB_ENV
-
-    - name: Generate config.toml
-      run: |
-        export PATH=$PATH:$(go env GOPATH)/bin
-        gomplate -f config.toml.tmpl -o config.toml
-
-    - name: Set image name
-      run: |
-        if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
-          TAG=${GITHUB_REF#refs/tags/}
-        else
-          TAG=latest
-        fi
-        echo "FULL_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG" >> $GITHUB_ENV
-
-    - name: Build ${{ matrix.image-type }} image
-      run: |
-        mkdir -p output
-        sudo podman pull ${{ env.FULL_IMAGE }}
-        sudo podman pull quay.io/centos-bootc/bootc-image-builder:latest
-        sudo podman run \
-          --rm \
-          --privileged \
-          --pull=newer \
-          --security-opt label=type:unconfined_t \
-          -v $(pwd)/config.toml:/config.toml:ro \
-          -v $(pwd)/output:/output \
-          -v /var/lib/containers/storage:/var/lib/containers/storage \
-          quay.io/centos-bootc/bootc-image-builder:latest \
-          --type ${{ matrix.image-type }} \
-          ${{ env.FULL_IMAGE }}
-
-    - name: Upload ${{ matrix.image-type }} artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: rpi5-${{ matrix.image-type }}-image
-        path: output/
-        retention-days: 30
-
-    - name: Create release
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: output/*
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-
   test-container:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm64
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm64
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -173,3 +77,20 @@ jobs:
     - name: Test container lint
       run: |
         docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test bootc container lint
+
+    - name: Test container functionality
+      run: |
+        # Test that required packages are installed
+        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+          rpm -q tailscale NetworkManager-wifi podman
+        
+        # Test that scripts are executable
+        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+          test -x /usr/local/bin/wifi-setup.sh
+        
+        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+          test -x /usr/local/bin/tailscale-setup.sh
+        
+        # Test that node-exporter container config exists
+        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+          test -f /etc/containers/systemd/node-exporter.container

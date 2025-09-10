@@ -6,7 +6,6 @@ This guide provides instructions for testing the Fedora bootc Raspberry Pi 5 sys
 
 - ARM64 macOS system (M1/M2/M3 Mac)
 - Podman installed and configured
-- Docker Desktop or Colima (optional, for additional testing)
 - Go (for gomplate template processing)
 
 ## Quick Start
@@ -18,11 +17,11 @@ This guide provides instructions for testing the Fedora bootc Raspberry Pi 5 sys
 git clone https://github.com/tempest-concorde/fedora-bootc-rpi5.git
 cd fedora-bootc-rpi5
 
-# Set required environment variables
+# Set required environment variables for testing
 export SSH_KEY_PATH="$HOME/.ssh/id_rsa.pub"
 export DOCKER_AUTH_PATH="$(pwd)/docker-auth.json"
 
-# Optional environment variables
+# Optional environment variables (for full image building)
 export TAILSCALE_AUTH_KEY="tskey-auth-your-key-here"
 export WIFI_SSID_1="Your-WiFi-Network"
 export WIFI_PSK_1="your-wifi-password"
@@ -39,10 +38,12 @@ cat > docker-auth.json << 'EOF'
 EOF
 ```
 
-### 3. Basic Container Testing
+### 3. Container Testing
+
+The GitHub Actions workflow now runs on ARM64 runners and only builds container images. Local testing focuses on container functionality:
 
 ```bash
-# Build the container
+# Build the container locally (GitHub Actions does this automatically)
 make container
 
 # Test the container interactively
@@ -90,7 +91,7 @@ podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test bootc container li
 # Install gomplate
 go install github.com/hairyhenderson/gomplate/v3/cmd/gomplate@latest
 
-# Generate config.toml
+# Generate config.toml (requires environment variables to be set)
 make toml
 
 # Check generated configuration
@@ -121,35 +122,78 @@ podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
     bash -n /usr/local/bin/tailscale-setup.sh
 ```
 
+### Node Exporter Test
+
+```bash
+# Test that node-exporter container config exists
+podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+    test -f /etc/containers/systemd/node-exporter.container
+
+# Check node-exporter configuration
+podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+    cat /etc/containers/systemd/node-exporter.container
+```
+
+## Local Image Building (with Secret Injection)
+
+The new workflow separates container building (automated via GitHub Actions) from image building (local with secrets):
+
+### Set Environment Variables
+
+```bash
+# Required for local image building
+export SSH_KEY_PATH="$HOME/.ssh/id_rsa.pub"
+export DOCKER_AUTH_PATH="$(pwd)/docker-auth.json"
+export TAILSCALE_AUTH_KEY="tskey-auth-your-key-here"
+export WIFI_SSID_1="Your-WiFi-Network"
+export WIFI_PSK_1="your-wifi-password"
+# Optional secondary network
+export WIFI_SSID_2="Guest-Network"
+export WIFI_PSK_2="guest-password"
+```
+
+### Build Images with Secrets
+
+```bash
+# Create Raspberry Pi 5 disk image with secrets embedded
+make rpi5-img
+
+# Create ISO with secrets embedded
+make iso
+
+# Create QCOW2 for testing with secrets embedded
+make qcow
+
+# Build all image types
+make build-images
+```
+
+### What Changed
+
+**Before**: GitHub Actions built container images AND disk images/ISOs
+**Now**: 
+- GitHub Actions (ARM64 runners) build ONLY container images
+- Local bootc image builder creates disk images/ISOs with secrets injected at build time
+- Secrets are embedded during the bootc image building process, not in the container
+
 ## Advanced Testing
 
 ### Multi-Architecture Build Test
 
 ```bash
-# Test x86_64 build (for comparison)
-podman build --platform=linux/amd64 -t fedora-bootc-rpi5:x86_64 .
-
-# Compare architectures
+# The container is now ARM64 only, optimized for Raspberry Pi 5
 podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test uname -m
-podman run --rm --platform=linux/amd64 fedora-bootc-rpi5:x86_64 uname -m
+# Should output: aarch64
 ```
 
 ### Image Size Optimization Test
 
 ```bash
-# Check image size
+# Check image size (should be smaller without Prometheus/Grafana)
 podman images fedora-bootc-rpi5:test --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 
 # Check layer sizes
 podman history --format "table {{.CreatedBy}}\t{{.Size}}" fedora-bootc-rpi5:test
-```
-
-### Monitoring Stack Test
-
-```bash
-# Check monitoring configuration files
-podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
-    find /etc -name "*.container" -o -name "prometheus.yml" -o -name "grafana.ini"
 ```
 
 ### Development Workflow
@@ -165,19 +209,19 @@ make dev-test
 make show-config
 ```
 
-## QEMU Testing (Alternative)
+## Testing the ARM64 GitHub Actions Build
 
-If you want to test the full bootc image:
+The GitHub Actions now runs on `ubuntu-24.04-arm64` runners:
 
-```bash
-# Generate QCOW2 for testing
-make qcow
-
-# The generated image will be in output/
-ls -la output/
-
-# Note: QEMU testing requires additional setup for ARM64 emulation on macOS
+```yaml
+runs-on: ubuntu-24.04-arm64  # Native ARM64 runners
 ```
+
+You can test this by:
+
+1. Push to a branch or create a PR
+2. GitHub Actions will build the container on native ARM64
+3. The build will be faster and more efficient than cross-compilation
 
 ## Continuous Testing
 
@@ -208,26 +252,6 @@ Make it executable:
 chmod +x .git/hooks/pre-push
 ```
 
-### Local CI Simulation
-
-```bash
-# Simulate the GitHub Actions workflow locally
-export REGISTRY=localhost:5000
-export IMAGE_NAME=fedora-bootc-rpi5
-
-# Start local registry for testing
-podman run -d -p 5000:5000 --name registry registry:2
-
-# Build and push to local registry
-make container
-podman tag fedora-bootc-rpi5:latest localhost:5000/fedora-bootc-rpi5:latest
-podman push localhost:5000/fedora-bootc-rpi5:latest
-
-# Clean up
-podman stop registry
-podman rm registry
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -238,18 +262,19 @@ podman rm registry
    podman build --platform=linux/arm64 --progress=plain .
    ```
 
-2. **Permission Errors**
+2. **Missing Node Exporter**
+   ```bash
+   # Check that only node-exporter is configured (no Prometheus/Grafana)
+   podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+       ls -la /etc/containers/systemd/
+   # Should only show node-exporter.container
+   ```
+
+3. **Permission Errors**
    ```bash
    # Check script permissions in container
    podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
        find /usr/local/bin -name "*.sh" -exec ls -la {} \;
-   ```
-
-3. **Missing Dependencies**
-   ```bash
-   # Verify all packages are installed
-   podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
-       rpm -qa | sort
    ```
 
 ### Debug Commands
@@ -270,7 +295,7 @@ podman run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
 ## Performance Testing
 
 ```bash
-# Time the build process
+# Time the build process (should be faster on ARM64 with less monitoring)
 time make container
 
 # Check resource usage during build
@@ -289,38 +314,15 @@ make clean
 
 # Remove test images
 podman rmi fedora-bootc-rpi5:test 2>/dev/null || true
-podman rmi fedora-bootc-rpi5:x86_64 2>/dev/null || true
 
 # Clean up Docker auth file
 rm -f docker-auth.json
 ```
 
-## Integration with IDEs
+## Summary of Changes
 
-### VS Code
-
-Add to `.vscode/tasks.json`:
-
-```json
-{
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "Build Container",
-            "type": "shell",
-            "command": "make container",
-            "group": "build",
-            "problemMatcher": []
-        },
-        {
-            "label": "Test Container",
-            "type": "shell",
-            "command": "make test-local",
-            "group": "test",
-            "problemMatcher": []
-        }
-    ]
-}
-```
-
-This guide should help you thoroughly test the Raspberry Pi 5 bootc system locally before deploying to actual hardware.
+1. **GitHub Actions**: Now uses ARM64 runners (`ubuntu-24.04-arm64`)
+2. **Container Only**: GitHub Actions builds only the container image
+3. **Local Image Building**: Use `make iso`, `make rpi5-img` locally with secrets
+4. **Monitoring**: Removed Prometheus/Grafana, kept only Node Exporter
+5. **Secret Injection**: Secrets are injected during bootc image build, not in container

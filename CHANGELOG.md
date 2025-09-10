@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ARM64 architecture support and optimization
 - Tailscale VPN integration with automatic setup
 - WiFi configuration via kickstart with support for multiple networks
-- Monitoring stack (Prometheus, Grafana, Node Exporter) via Quadlet
+- Node Exporter monitoring via Quadlet
 - NetworkManager-based network management
 - SSH key-based authentication for root access
 - Automated container and image builds via GitHub Actions
@@ -39,5 +39,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Initial Release
 - Stable release of Raspberry Pi 5 bootc system
-- Production-ready networking and monitoring
+- Production-ready networking and Node Exporter monitoring
 - Complete documentation and deployment guides

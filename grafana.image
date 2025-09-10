@@ -1,6 +1,0 @@
-[Unit]
-Description=Grafana Dashboard Image
-Documentation=man:podman-systemd.unit(5)
-
-[Image]
-Image=docker.io/grafana/grafana:latest

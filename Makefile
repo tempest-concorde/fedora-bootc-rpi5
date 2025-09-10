@@ -40,8 +40,9 @@ push: container ## Push the container image to registry
 	@echo "Pushing container image: $(FULL_IMAGE)"
 	@podman push $(FULL_IMAGE)
 
-iso: toml ## Create bootable ISO image for Raspberry Pi 5
-	@echo "Creating ISO image for Raspberry Pi 5..."
+iso: toml check-env ## Create bootable ISO image with secret injection for Raspberry Pi 5
+	@echo "Creating ISO image with secret injection for Raspberry Pi 5..."
+	@echo "This builds locally with secrets embedded at build time."
 	@rm -rf output
 	@mkdir -p output
 	@podman pull $(FULL_IMAGE)
@@ -59,8 +60,9 @@ iso: toml ## Create bootable ISO image for Raspberry Pi 5
 		--type iso \
 		$(FULL_IMAGE)
 
-rpi5-img: toml ## Create Raspberry Pi 5 disk image
-	@echo "Creating Raspberry Pi 5 disk image..."
+rpi5-img: toml check-env ## Create Raspberry Pi 5 disk image with secret injection
+	@echo "Creating Raspberry Pi 5 disk image with secret injection..."
+	@echo "This builds locally with secrets embedded at build time."
 	@rm -rf output
 	@mkdir -p output
 	@podman pull $(FULL_IMAGE)
@@ -78,8 +80,9 @@ rpi5-img: toml ## Create Raspberry Pi 5 disk image
 		--type raw \
 		$(FULL_IMAGE)
 
-qcow: toml ## Create QCOW2 image for testing
-	@echo "Creating QCOW2 image..."
+qcow: toml check-env ## Create QCOW2 image for testing with secret injection
+	@echo "Creating QCOW2 image with secret injection..."
+	@echo "This builds locally with secrets embedded at build time."
 	@rm -rf output
 	@mkdir -p output
 	@podman pull $(FULL_IMAGE)
@@ -130,7 +133,10 @@ dev-test: dev-build ## Full development test (build + local test)
 # Production targets
 release: check-env container push ## Build and push release version
 
-all: clean deps check-env container rpi5-img ## Complete build pipeline
+# Local image building (with secret injection)
+build-images: iso rpi5-img ## Build all image types locally with secrets
+
+all: clean deps check-env container ## Complete container build pipeline
 
 # Show configuration
 show-config: ## Show current configuration

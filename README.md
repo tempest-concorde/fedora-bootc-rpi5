@@ -10,7 +10,7 @@ This project creates a bootc-based headless system that automatically configures
 - Automatic WiFi configuration via kickstart
 - Tailscale VPN integration
 - ARM64 optimized for Raspberry Pi 5
-- Monitoring stack (Prometheus, Grafana, Node Exporter)
+- Node Exporter monitoring
 - Remote management capabilities
 
 ## Features
@@ -19,7 +19,7 @@ This project creates a bootc-based headless system that automatically configures
 - **WiFi Configuration**: Automatic setup of multiple WiFi networks via kickstart
 - **Tailscale VPN**: Secure remote access and networking
 - **ARM64 Optimized**: Built specifically for Raspberry Pi 5
-- **Monitoring Stack**: Built-in system monitoring via Grafana dashboard
+- **Node Exporter Monitoring**: Built-in system metrics collection via Node Exporter
 - **Network Management**: NetworkManager for robust network handling
 - **Container Support**: Podman for containerized workloads
 
@@ -58,23 +58,41 @@ The system supports configuring multiple WiFi networks during installation. Set 
 
 ## Building
 
-### Create Raspberry Pi 5 Image
+### Build Container Image (via GitHub Actions)
 
+The container image is automatically built and pushed to Quay.io via GitHub Actions on ARM64 runners when you push to main or create releases.
+
+### Create Raspberry Pi 5 Images Locally (with Secret Injection)
+
+**Prerequisites**: Set up your environment variables with secrets:
+
+```shell
+export SSH_KEY_PATH=$HOME/.ssh/id_rsa.pub
+export DOCKER_AUTH_PATH=`pwd`/docker-auth.json
+export TAILSCALE_AUTH_KEY=your-tailscale-auth-key
+export WIFI_SSID_1=your-wifi-network
+export WIFI_PSK_1=your-wifi-password
+# Optional secondary network
+export WIFI_SSID_2=guest-network
+export WIFI_PSK_2=guest-password
+```
+
+**Create Raspberry Pi 5 disk image:**
 ```shell
 make rpi5-img
 ```
 
-### Create ISO for USB Boot
-
+**Create ISO for USB boot:**
 ```shell
 make iso
 ```
 
-### Build Container Image
-
+**Create QCOW2 for testing:**
 ```shell
-make container
+make qcow
 ```
+
+These commands use bootc image builder locally to create images with your secrets embedded at build time.
 
 ## Deployment
 
@@ -105,15 +123,14 @@ make container
 
 - **Local WiFi**: Configured networks from kickstart
 - **Tailscale**: Automatic VPN access to your Tailnet
-- **Monitoring**: Grafana dashboard on port 3000
+- **Monitoring**: Node Exporter metrics on port 9100
 
 ## Monitoring
 
-The system includes a monitoring stack accessible via:
+The system includes Node Exporter for system metrics collection:
 
-- **Grafana**: http://[device-ip]:3000 (admin/admin)
-- **Prometheus**: http://[device-ip]:9090
-- **System Metrics**: Comprehensive hardware and system monitoring
+- **Node Exporter**: http://[device-ip]:9100/metrics
+- **System Metrics**: Hardware and system metrics in Prometheus format
 
 ## Services
 
@@ -121,7 +138,7 @@ The system includes a monitoring stack accessible via:
 - `tailscaled.service`: Tailscale VPN daemon
 - `sshd.service`: SSH daemon
 - `NetworkManager.service`: Network management
-- Monitoring containers via Quadlet
+- Node Exporter container via Quadlet
 
 ## WiFi Management
 

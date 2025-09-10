@@ -81,6 +81,10 @@ tailscale status 2>/dev/null || echo "Tailscale not configured"
 echo ""
 echo "=== WiFi Networks ==="
 nmcli -t -f NAME,TYPE connection show | grep wifi || echo "No WiFi connections configured"
+echo ""
+echo "=== Node Exporter Status ==="
+systemctl is-active node-exporter.service 2>/dev/null || echo "Node exporter service status unknown"
+echo "Node Exporter metrics available at: http://$(hostname -I | awk '{print $1}'):9100/metrics"
 EOF
 chmod +x /usr/local/bin/system-info.sh
 
