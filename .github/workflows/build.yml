@@ -1,9 +1,8 @@
-name: Build ARM64 Fedora bootc for Raspberry Pi 5
+name: Build and Test ARM64 Fedora bootc for Raspberry Pi 5
 
 on:
   push:
     branches: [ main, develop ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -13,84 +12,56 @@ env:
   IMAGE_NAME: tempest-concorde/fedora-bootc-rpi5
 
 jobs:
-  build-container:
+  build-and-test:
     runs-on: ubuntu-24.04-arm
+    container:
+      image: registry.access.redhat.com/ubi9/ubi
+      options: --privileged    
     permissions:
       contents: read
-      packages: write
+      packages: read
 
     steps:
+    - name: Get container tools in UBI builder
+      run: dnf -y install podman buildah skopeo make wget git
+
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Workaround open podman-login action issue
+      env:
+        auth: "{ \"auths\": {} }"
+      run: |
+        mkdir -p $HOME/.docker
+        echo $auth > $HOME/.docker/config.json
 
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
+    - name: Build container image (no push)
+      id: build-image
+      uses: redhat-actions/buildah-build@v2
       with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ secrets.QUAY_USERNAME }}
-        password: ${{ secrets.QUAY_TOKEN }}
-
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=raw,value=latest,enable={{is_default_branch}}
-
-    - name: Build and push container image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
+        image: "${{ env.IMAGE_NAME }}"
+        tags: test ${{ github.sha }}
         platforms: linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-  test-container:
-    runs-on: ubuntu-24.04-arm
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Build test image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/arm64
-        push: false
-        tags: fedora-bootc-rpi5:test
-        cache-from: type=gha
+        containerfiles: |
+          ./Containerfile
 
     - name: Test container lint
       run: |
-        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test bootc container lint
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_NAME }}:test bootc container lint
 
     - name: Test container functionality
       run: |
         # Test that required packages are installed
-        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_NAME }}:test \
           rpm -q tailscale NetworkManager-wifi podman
         
         # Test that scripts are executable
-        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_NAME }}:test \
           test -x /usr/local/bin/wifi-setup.sh
         
-        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_NAME }}:test \
           test -x /usr/local/bin/tailscale-setup.sh
         
         # Test that node-exporter container config exists
-        docker run --rm --platform=linux/arm64 fedora-bootc-rpi5:test \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_NAME }}:test \
           test -f /etc/containers/systemd/node-exporter.container
