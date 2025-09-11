@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/tempest-concorde/fedora-bootc-rpi5/compare/v1.0.0...v1.0.1) (2025-09-11)
+
+
+### Bug Fixes
+
+* release pipeline ([#3](https://github.com/tempest-concorde/fedora-bootc-rpi5/issues/3)) ([cdb0a0d](https://github.com/tempest-concorde/fedora-bootc-rpi5/commit/cdb0a0d511077a4e7710850ea8a9e2add820ec0e))
+
 # 1.0.0 (2025-09-11)
 
 

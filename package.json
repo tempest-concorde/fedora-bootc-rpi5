@@ -1,6 +1,6 @@
 {
   "name": "fedora-bootc-rpi5",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Headless Fedora bootc system for Raspberry Pi 5 with Tailscale and WiFi management",
   "repository": {
     "type": "git",
