@@ -16,7 +16,6 @@ RUN dnf install -y \
     NetworkManager-wifi \
     wpa_supplicant \
     iw \
-    wireless-tools \
     python3 \
     python3-pip \
     git \
