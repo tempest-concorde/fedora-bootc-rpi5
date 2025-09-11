@@ -5,8 +5,9 @@ on:
     tags: [ 'v*' ]
 
 env:
-  REGISTRY: quay.io
-  IMAGE_NAME: tempest-concorde/fedora-bootc-rpi5
+  REGISTRY_USER: rh-ee-chbutler
+  IMAGE_REGISTRY: quay.io
+  IMAGE: flightradar-bootc-pi
 
 jobs:
   build-and-release:
@@ -44,14 +45,14 @@ jobs:
       with:
         username: ${{ secrets.QUAY_USERNAME }}
         password: ${{ secrets.QUAY_TOKEN }}
-        registry: ${{ env.REGISTRY }}
+        registry: ${{ env.IMAGE_REGISTRY }}
         auth_file_path: /run/containers/0/auth.json
 
     - name: Build container image
       id: build-image
       uses: redhat-actions/buildah-build@v2
       with:
-        image: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+        image: "${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}"
         tags: latest ${{ steps.parse_version.outputs.VERSION }} ${{ github.sha }}
         platforms: linux/arm64
         containerfiles: |
@@ -59,31 +60,31 @@ jobs:
 
     - name: Test container lint
       run: |
-        podman run --rm --platform=linux/arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} bootc container lint
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} bootc container lint
 
     - name: Test container functionality
       run: |
         # Test that required packages are installed
-        podman run --rm --platform=linux/arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
           rpm -q tailscale NetworkManager-wifi podman
         
         # Test that scripts are executable
-        podman run --rm --platform=linux/arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
           test -x /usr/local/bin/wifi-setup.sh
         
-        podman run --rm --platform=linux/arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
           test -x /usr/local/bin/tailscale-setup.sh
         
         # Test that node-exporter container config exists
-        podman run --rm --platform=linux/arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+        podman run --rm --platform=linux/arm64 ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
           test -f /etc/containers/systemd/node-exporter.container
 
     - name: Push to registry
       uses: redhat-actions/push-to-registry@v2
       with:
-        image: ${{ env.IMAGE_NAME }}
+        image: ${{ env.IMAGE }}
         tags: latest ${{ steps.parse_version.outputs.VERSION }} ${{ github.sha }}
-        registry: ${{ env.REGISTRY }}
+        registry: ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}
 
     - name: Install Cosign
       uses: sigstore/cosign-installer@v3.7.0
@@ -91,7 +92,7 @@ jobs:
     - name: Get image digest for signing
       id: digest
       run: |
-        DIGEST=$(podman image inspect --format '{{ .Digest }}' ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }})
+        DIGEST=$(podman image inspect --format '{{ .Digest }}' ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }})
         echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_OUTPUT
         echo "Image digest: $DIGEST"
 
@@ -102,4 +103,4 @@ jobs:
           -a sha=${{ github.sha }} \
           -a run_id=${{ github.run_id }} \
           -a run_attempt="${{ github.run_attempt }}" \
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.IMAGE_DIGEST }}
+          ${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}@${{ steps.digest.outputs.IMAGE_DIGEST }}

@@ -6,9 +6,9 @@ on:
       - main
 
 env:
-  REGISTRY_USER: tempest-concorde
+  REGISTRY_USER: rh-ee-chbutler
   IMAGE_REGISTRY: quay.io
-  IMAGE: fedora-bootc-rpi5
+  IMAGE: flightradar-bootc-pi
 
 jobs:
   testbuild:
