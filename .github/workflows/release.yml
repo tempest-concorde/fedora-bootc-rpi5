@@ -54,20 +54,32 @@ jobs:
 
     - name: Test container functionality
       run: |
-        # Test that required packages are installed
-        podman run --rm --platform=linux/arm64 quay.io/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
-          rpm -q tailscale NetworkManager-wifi podman
+        # Test image was built successfully
+        IMAGE_NAME="${{ env.IMAGE_REGISTRY }}/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }}"
+        echo "Testing built image: $IMAGE_NAME"
+        podman image inspect "$IMAGE_NAME" --format '{{.Id}}'
         
-        # Test that scripts are executable
-        podman run --rm --platform=linux/arm64 quay.io/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
-          test -x /usr/local/bin/wifi-setup.sh
+
         
-        podman run --rm --platform=linux/arm64 quay.io/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
-          test -x /usr/local/bin/tailscale-setup.sh
+        # Verify the image contains expected files using buildah mount (avoids nested containers)
+        CONTAINER=$(buildah from "$IMAGE_NAME")
+        MOUNT=$(buildah mount $CONTAINER)
         
-        # Test that node-exporter container config exists
-        podman run --rm --platform=linux/arm64 quay.io/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} \
-          test -f /etc/containers/systemd/node-exporter.container
+        # Test that scripts exist and are executable
+        test -x "$MOUNT/usr/local/bin/wifi-setup.sh"
+        test -x "$MOUNT/usr/local/bin/tailscale-setup.sh"
+        
+        # Test that node-exporter config exists
+        test -f "$MOUNT/etc/containers/systemd/node-exporter.container"
+        
+        # Test that required packages are installed (check RPM database)
+        chroot "$MOUNT" rpm -q tailscale NetworkManager-wifi podman >/dev/null
+        
+        # Clean up
+        buildah unmount $CONTAINER
+        buildah rm $CONTAINER
+        
+        echo "✅ All container functionality tests passed"
 
   release:
     runs-on: ubuntu-latest
