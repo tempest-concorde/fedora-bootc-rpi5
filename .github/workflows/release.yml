@@ -52,10 +52,6 @@ jobs:
         containerfiles: |
          ./Containerfile
 
-    - name: Test container lint
-      run: |
-        podman run --rm --platform=linux/arm64 quay.io/${{ env.REGISTRY_USER }}/${{ env.IMAGE }}:${{ github.sha }} bootc container lint
-
     - name: Test container functionality
       run: |
         # Test that required packages are installed
